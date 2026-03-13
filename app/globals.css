@@ -1,0 +1,148 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+:root {
+  /* Light mode - Sand background, Cyprus text */
+  --background: #F0EDE5;
+  --foreground: #004643;
+  --card: #FFFFFF;
+  --card-foreground: #004643;
+  --popover: #FFFFFF;
+  --popover-foreground: #004643;
+  --primary: #004643;
+  --primary-foreground: #F0EDE5;
+  --secondary: #00796B;
+  --secondary-foreground: #F0EDE5;
+  --muted: #E8E4DC;
+  --muted-foreground: #666666;
+  --accent: #002E2C;
+  --accent-foreground: #F0EDE5;
+  --destructive: #DC2626;
+  --destructive-foreground: #F0EDE5;
+  --border: #D9D2C8;
+  --input: #FFFFFF;
+  --ring: #004643;
+  
+  /* Cyprus accent variations */
+  --cyprus-50: #F0F6F5;
+  --cyprus-100: #D9E7E6;
+  --cyprus-200: #B3CFCE;
+  --cyprus-300: #5AA69D;
+  --cyprus-400: #00796B;
+  --cyprus-500: #006B5E;
+  --cyprus-600: #005A51;
+  --cyprus-700: #004643;
+  --cyprus-800: #002E2C;
+  --cyprus-900: #001F1D;
+  
+  /* Sand variations */
+  --sand-50: #FAF8F6;
+  --sand-100: #F5F2EC;
+  --sand-200: #EBE5DB;
+  --sand-300: #E0D9CD;
+  --sand-400: #D9D2C8;
+  --sand-500: #C4BDB0;
+  --sand-600: #A89E94;
+  --sand-700: #8B8278;
+  --sand-800: #6E665E;
+  --sand-900: #F0EDE5;
+  
+  --radius: 0.625rem;
+}
+
+.dark {
+  /* Dark mode - Cyprus background, Sand text */
+  --background: #001F1D;
+  --foreground: #F0EDE5;
+  --card: #002E2C;
+  --card-foreground: #F0EDE5;
+  --popover: #004643;
+  --popover-foreground: #F0EDE5;
+  --primary: #F0EDE5;
+  --primary-foreground: #004643;
+  --secondary: #00796B;
+  --secondary-foreground: #F0EDE5;
+  --muted: #00796B;
+  --muted-foreground: #B3CFCE;
+  --accent: #F0EDE5;
+  --accent-foreground: #001F1D;
+  --destructive: #EF4444;
+  --destructive-foreground: #001F1D;
+  --border: #004643;
+  --input: #002E2C;
+  --ring: #00796B;
+  
+  /* Cyprus accent variations */
+  --cyprus-50: #F0F6F5;
+  --cyprus-100: #D9E7E6;
+  --cyprus-200: #B3CFCE;
+  --cyprus-300: #5AA69D;
+  --cyprus-400: #00796B;
+  --cyprus-500: #006B5E;
+  --cyprus-600: #005A51;
+  --cyprus-700: #004643;
+  --cyprus-800: #002E2C;
+  --cyprus-900: #001F1D;
+  
+  /* Sand variations */
+  --sand-50: #FAF8F6;
+  --sand-100: #F5F2EC;
+  --sand-200: #EBE5DB;
+  --sand-300: #E0D9CD;
+  --sand-400: #D9D2C8;
+  --sand-500: #C4BDB0;
+  --sand-600: #A89E94;
+  --sand-700: #8B8278;
+  --sand-800: #6E665E;
+  --sand-900: #F0EDE5;
+}
+
+@theme inline {
+  --font-sans: 'Geist', 'Geist Fallback';
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
