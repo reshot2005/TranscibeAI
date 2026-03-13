@@ -108,20 +108,52 @@ export function MemberRecordingPanel({ departmentId, memberId, memberName }: Pro
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!file) return
+    if (!selectedFolderId) {
+      setUploadStatus('Please select or create a folder before uploading.')
+      return
+    }
     setIsUploading(true)
     setUploadStatus('Uploading...')
 
     try {
-      const form = new FormData()
-      form.append('file', file)
-      form.append('departmentId', departmentId)
-      form.append('memberId', memberId)
-      form.append('folderId', selectedFolderId)
-      form.append('title', title || file.name)
+      // 1) Upload file directly from browser to Supabase Storage
+      const recordingId = crypto.randomUUID()
+      const safeFileName = (file.name || 'audio')
+        .toLowerCase()
+        .replace(/[^a-z0-9.\-_]+/gi, '_')
+      const storagePath = `uploads/${departmentId}/${memberId}/${recordingId}-${safeFileName}`
 
+      const { error: storageError } = await supabase.storage
+        .from('recordings-original')
+        .upload(storagePath, file)
+
+      if (storageError) {
+        console.error('browser storage upload error', storageError)
+        throw new Error('Failed to upload file to storage')
+      }
+
+      const { data: pub } = supabase.storage
+        .from('recordings-original')
+        .getPublicUrl(storagePath)
+
+      const publicAudioUrl = pub?.publicUrl
+      if (!publicAudioUrl) {
+        throw new Error('Failed to get public URL for uploaded file')
+      }
+
+      // 2) Call backend with only metadata (small JSON)
       const resp = await fetch('/api/recordings/upload', {
         method: 'POST',
-        body: form,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordingId,
+          departmentId,
+          memberId,
+          folderId: selectedFolderId,
+          title: title || file.name,
+          storagePath,
+          publicAudioUrl,
+        }),
       })
 
       if (!resp.ok) {

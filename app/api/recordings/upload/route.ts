@@ -1,30 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { v4 as uuidv4 } from 'uuid'
 
 export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
-  const form = await req.formData().catch(() => null)
-  if (!form) {
-    return NextResponse.json({ error: 'Invalid form data' }, { status: 400 })
+  const body = (await req.json().catch(() => null)) as
+    | {
+        recordingId?: string
+        departmentId?: string
+        memberId?: string
+        folderId?: string | null
+        title?: string
+        storagePath?: string
+        publicAudioUrl?: string
+      }
+    | null
+
+  if (!body) {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const file = form.get('file')
-  const departmentId = form.get('departmentId')
-  const memberId = form.get('memberId')
-  const folderId = form.get('folderId')
-  const title = (form.get('title') as string) || 'Untitled recording'
+  const { recordingId, departmentId, memberId, folderId, title, storagePath, publicAudioUrl } = body
 
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: 'File is required' }, { status: 400 })
-  }
-
-  if (!departmentId || !memberId || !folderId) {
+  if (!recordingId || !departmentId || !memberId || !folderId || !storagePath || !publicAudioUrl) {
     return NextResponse.json(
-      { error: 'departmentId, memberId, and folderId are required' },
+      {
+        error:
+          'recordingId, departmentId, memberId, folderId, storagePath, and publicAudioUrl are required',
+      },
       { status: 400 },
     )
   }
+
+  const finalTitle = title || 'Untitled recording'
 
   const supabaseUrl = process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -47,40 +54,8 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const recordingId = uuidv4()
-
   try {
-    // 1) Upload original file to Supabase Storage
-    const arrayBuffer = await file.arrayBuffer()
-    // Supabase Storage keys must avoid certain characters. Sanitize filename.
-    const safeFileName = (file.name || 'audio')
-      .toLowerCase()
-      .replace(/[^a-z0-9.\-_]+/gi, '_')
-    const path = `uploads/${departmentId}/${memberId}/${recordingId}-${safeFileName}`
-
-    const storageResp = await fetch(
-      `${supabaseUrl}/storage/v1/object/recordings-original/${path}`,
-      {
-        method: 'POST',
-        headers: {
-          apikey: serviceKey,
-          Authorization: `Bearer ${serviceKey}`,
-          'Content-Type': file.type || 'application/octet-stream',
-        },
-        body: Buffer.from(arrayBuffer),
-      },
-    )
-
-    if (!storageResp.ok) {
-      const text = await storageResp.text()
-      console.error('Storage upload failed', storageResp.status, text)
-      return NextResponse.json(
-        { error: 'Storage upload failed', details: text },
-        { status: 500 },
-      )
-    }
-
-    // 2) Insert recording row
+    // 1) Insert recording row (the file is already in Supabase Storage)
     const insertResp = await fetch(`${supabaseUrl}/rest/v1/recordings`, {
       method: 'POST',
       headers: {
@@ -96,8 +71,8 @@ export async function POST(req: NextRequest) {
         department_id: departmentId,
         team_member_id: memberId,
         folder_id: folderId,
-        title,
-        original_storage_path: path,
+        title: finalTitle,
+        original_storage_path: storagePath,
         status: 'processing',
       }),
     })
@@ -111,28 +86,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 3) Upload to AssemblyAI
-    const uploadResp = await fetch('https://api.assemblyai.com/v2/upload', {
-      method: 'POST',
-      headers: {
-        Authorization: aaiKey,
-      },
-      body: Buffer.from(arrayBuffer),
-    })
-
-    if (!uploadResp.ok) {
-      const text = await uploadResp.text()
-      console.error('AssemblyAI upload failed', uploadResp.status, text)
-      return NextResponse.json(
-        { error: 'AssemblyAI upload failed', details: text },
-        { status: 500 },
-      )
-    }
-
-    const uploadJson = await uploadResp.json()
-    const audioUrl = uploadJson.upload_url as string
-
-    // 4) Create AssemblyAI transcript job with webhook.
+    // 2) Create AssemblyAI transcript job with webhook, using Supabase public URL directly.
     // Supabase Edge Functions require an apikey query param for unauthenticated calls.
     const webhookUrl =
       `${supabaseUrl}/functions/v1/webhook-assemblyai` +
@@ -145,7 +99,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        audio_url: audioUrl,
+        audio_url: publicAudioUrl,
         speech_models: ['universal-2'],
         speaker_labels: true,
         sentiment_analysis: true,
