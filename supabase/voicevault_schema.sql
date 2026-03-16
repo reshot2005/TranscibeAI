@@ -16,6 +16,10 @@ create table if not exists public.recordings (
   title text,
   original_storage_path text not null,
   processed_storage_path text,
+  -- Where the original media is stored: 'supabase' or 'cloudinary'
+  storage_type text,
+  -- Size of the stored media in bytes (tracked only for Supabase-backed objects)
+  storage_bytes bigint,
   status text default 'uploaded',
   transcription_status text default 'pending',
   diarization_status text default 'pending',

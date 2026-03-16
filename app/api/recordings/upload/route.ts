@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { v2 as cloudinary } from 'cloudinary'
 
 export const runtime = 'nodejs'
+
+const SOFT_LIMIT_BYTES = 900 * 1024 * 1024
+const HARD_LIMIT_BYTES = 1024 * 1024 * 1024
+
+const cloudName = process.env.CLOUDINARY_CLOUD_NAME
+const cloudApiKey = process.env.CLOUDINARY_API_KEY
+const cloudApiSecret = process.env.CLOUDINARY_API_SECRET
+
+if (cloudName && cloudApiKey && cloudApiSecret) {
+  cloudinary.config({
+    cloud_name: cloudName,
+    api_key: cloudApiKey,
+    api_secret: cloudApiSecret,
+  })
+}
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as
@@ -54,8 +71,76 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false },
+  })
+
   try {
-    // 1) Insert recording row (the file is already in Supabase Storage)
+    // 1) Determine current Supabase usage in bytes (only recordings stored in Supabase)
+    let supabaseUsageBytes = 0
+    const { data: rows, error: usageError } = await supabase
+      .from('recordings')
+      .select('storage_bytes, storage_type')
+      .eq('storage_type', 'supabase')
+
+    if (!usageError && rows) {
+      supabaseUsageBytes = rows.reduce((sum: number, r: any) => {
+        const v = typeof r.storage_bytes === 'number' ? r.storage_bytes : Number(r.storage_bytes ?? 0)
+        return sum + (Number.isFinite(v) ? v : 0)
+      }, 0)
+    } else if (usageError) {
+      console.error('failed to compute Supabase usage', usageError)
+    }
+
+    // 2) Get size of the newly uploaded file from Supabase Storage
+    let fileSizeBytes = 0
+    const { data: info, error: infoError } = await supabase.storage
+      .from('recordings-original')
+      .info(storagePath)
+    if (!infoError && info && typeof (info as any).size === 'number') {
+      fileSizeBytes = (info as any).size as number
+    } else if (infoError) {
+      console.error('failed to read storage object info', infoError)
+    }
+
+    const willFitInSupabase = supabaseUsageBytes + fileSizeBytes < SOFT_LIMIT_BYTES
+
+    let storageType: 'supabase' | 'cloudinary' = 'supabase'
+    let storageBytes = fileSizeBytes
+    let finalAudioUrl = publicAudioUrl
+
+    // 3) If we're above the soft limit and Cloudinary is configured, overflow to Cloudinary.
+    if (!willFitInSupabase) {
+      if (!cloudName || !cloudApiKey || !cloudApiSecret) {
+        console.warn(
+          'Cloudinary not configured; falling back to Supabase storage even though soft limit exceeded',
+        )
+      } else {
+        try {
+          const uploadResult = await cloudinary.uploader.upload(publicAudioUrl, {
+            folder: 'voicevault',
+            resource_type: 'video',
+          })
+          finalAudioUrl = uploadResult.secure_url
+          storageType = 'cloudinary'
+          storageBytes = uploadResult.bytes ?? fileSizeBytes
+
+          // Best-effort: remove original object from Supabase to free space
+          const { error: removeError } = await supabase.storage
+            .from('recordings-original')
+            .remove([storagePath])
+          if (removeError) {
+            console.error('failed to remove Supabase object after Cloudinary upload', removeError)
+          }
+        } catch (cloudErr) {
+          console.error('Cloudinary upload failed, keeping file in Supabase instead', cloudErr)
+          // Fall back to Supabase-backed storage; finalAudioUrl remains publicAudioUrl
+          storageType = 'supabase'
+        }
+      }
+    }
+
+    // 4) Insert recording row
     const insertResp = await fetch(`${supabaseUrl}/rest/v1/recordings`, {
       method: 'POST',
       headers: {
@@ -74,6 +159,9 @@ export async function POST(req: NextRequest) {
         title: finalTitle,
         original_storage_path: storagePath,
         status: 'processing',
+        audio_url: finalAudioUrl,
+        storage_type: storageType,
+        storage_bytes: storageBytes || null,
       }),
     })
 
@@ -86,7 +174,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 2) Create AssemblyAI transcript job with webhook, using Supabase public URL directly.
+    // 5) Create AssemblyAI transcript job with webhook, using the final audio URL.
     // Supabase Edge Functions require an apikey query param for unauthenticated calls.
     const webhookUrl =
       `${supabaseUrl}/functions/v1/webhook-assemblyai` +
@@ -99,7 +187,7 @@ export async function POST(req: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        audio_url: publicAudioUrl,
+        audio_url: finalAudioUrl,
         speech_models: ['universal-2'],
         speaker_labels: true,
         sentiment_analysis: true,

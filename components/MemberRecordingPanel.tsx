@@ -27,7 +27,7 @@ type TranscriptLine = {
 }
 
 export function MemberRecordingPanel({ departmentId, memberId, memberName }: Props) {
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
   const [title, setTitle] = useState<string>('')
   const [uploadStatus, setUploadStatus] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -107,62 +107,85 @@ export function MemberRecordingPanel({ departmentId, memberId, memberName }: Pro
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file) return
+    if (files.length === 0) return
     if (!selectedFolderId) {
       setUploadStatus('Please select or create a folder before uploading.')
       return
     }
     setIsUploading(true)
-    setUploadStatus('Uploading...')
+    setUploadStatus(`Uploading ${files.length} recording(s)...`)
 
     try {
-      // 1) Upload file directly from browser to Supabase Storage
-      const recordingId = crypto.randomUUID()
-      const safeFileName = (file.name || 'audio')
-        .toLowerCase()
-        .replace(/[^a-z0-9.\-_]+/gi, '_')
-      const storagePath = `uploads/${departmentId}/${memberId}/${recordingId}-${safeFileName}`
+      let successCount = 0
+      let failureCount = 0
 
-      const { error: storageError } = await supabase.storage
-        .from('recordings-original')
-        .upload(storagePath, file)
+      for (const file of files) {
+        try {
+          // 1) Upload file directly from browser to Supabase Storage
+          const recordingId = crypto.randomUUID()
+          const safeFileName = (file.name || 'audio')
+            .toLowerCase()
+            .replace(/[^a-z0-9.\-_]+/gi, '_')
+          const storagePath = `uploads/${departmentId}/${memberId}/${recordingId}-${safeFileName}`
 
-      if (storageError) {
-        console.error('browser storage upload error', storageError)
-        throw new Error('Failed to upload file to storage')
+          const { error: storageError } = await supabase.storage
+            .from('recordings-original')
+            .upload(storagePath, file)
+
+          if (storageError) {
+            console.error('browser storage upload error', storageError)
+            throw new Error('Failed to upload file to storage')
+          }
+
+          const { data: pub } = supabase.storage
+            .from('recordings-original')
+            .getPublicUrl(storagePath)
+
+          const publicAudioUrl = pub?.publicUrl
+          if (!publicAudioUrl) {
+            throw new Error('Failed to get public URL for uploaded file')
+          }
+
+          // 2) Call backend with only metadata (small JSON)
+          const resp = await fetch('/api/recordings/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recordingId,
+              departmentId,
+              memberId,
+              folderId: selectedFolderId,
+              title: title || file.name,
+              storagePath,
+              publicAudioUrl,
+            }),
+          })
+
+          if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}))
+            throw new Error(data.error || 'Upload failed')
+          }
+
+          successCount += 1
+        } catch (err) {
+          console.error('single file upload failed', err)
+          failureCount += 1
+        }
       }
 
-      const { data: pub } = supabase.storage
-        .from('recordings-original')
-        .getPublicUrl(storagePath)
-
-      const publicAudioUrl = pub?.publicUrl
-      if (!publicAudioUrl) {
-        throw new Error('Failed to get public URL for uploaded file')
+      if (failureCount === 0) {
+        setUploadStatus(
+          `All ${successCount} recording(s) uploaded. Transcription started – they will appear in the list below.`,
+        )
+      } else if (successCount === 0) {
+        setUploadStatus('All uploads failed. Please check the console logs for details.')
+      } else {
+        setUploadStatus(
+          `${successCount} recording(s) uploaded, ${failureCount} failed. Check console logs for details.`,
+        )
       }
 
-      // 2) Call backend with only metadata (small JSON)
-      const resp = await fetch('/api/recordings/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recordingId,
-          departmentId,
-          memberId,
-          folderId: selectedFolderId,
-          title: title || file.name,
-          storagePath,
-          publicAudioUrl,
-        }),
-      })
-
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}))
-        throw new Error(data.error || 'Upload failed')
-      }
-
-      setUploadStatus('Upload complete. Transcription started – it will appear in the list below.')
-      setFile(null)
+      setFiles([])
       setTitle('')
     } catch (err: any) {
       setUploadStatus(err.message ?? 'Upload failed')
@@ -285,12 +308,13 @@ export function MemberRecordingPanel({ departmentId, memberId, memberName }: Pro
           <input
             type="file"
             accept="audio/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            multiple
+            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
             className="block w-full text-sm"
           />
           <button
             type="submit"
-            disabled={!file || isUploading}
+            disabled={files.length === 0 || isUploading}
             className="px-4 py-2 rounded bg-emerald-600 text-white text-sm disabled:opacity-50"
           >
             {isUploading ? 'Uploading...' : 'Upload & Transcribe'}
@@ -381,23 +405,38 @@ function FolderGroupedRecordings({
     }
   }
 
+  const searchLower = search.trim().toLowerCase()
+
   let items = Array.from(groups.values()).map((g, idx) => {
-    const totalSeconds = g.recs.reduce(
+    // When searching, filter recordings inside each folder as well
+    const recsForGroup = !searchLower
+      ? g.recs
+      : g.recs.filter((r) => {
+          const title = (r.title || 'untitled recording').toLowerCase()
+          const path = (r.original_storage_path || '').toLowerCase()
+          return title.includes(searchLower) || path.includes(searchLower)
+        })
+
+    const totalSeconds = recsForGroup.reduce(
       (sum, r) => sum + (r.duration_seconds ?? 0),
       0,
     )
+
     return {
       orderIndex: idx,
       folderId: g.folderId,
       name: g.name,
-      recs: g.recs,
+      recs: recsForGroup,
       totalSeconds,
     }
   })
 
-  const searchLower = search.trim().toLowerCase()
   if (searchLower) {
-    items = items.filter((g) => g.name.toLowerCase().includes(searchLower))
+    items = items.filter((g) => {
+      const inFolderName = g.name.toLowerCase().includes(searchLower)
+      const hasMatchingRecordings = g.recs.length > 0
+      return inFolderName || hasMatchingRecordings
+    })
   }
 
   items.sort((a, b) =>
@@ -406,6 +445,24 @@ function FolderGroupedRecordings({
 
   if (items.length === 0) {
     return <p className="text-xs text-slate-500">No folders match your search.</p>
+  }
+
+  const handleRenameFolder = async (folderId: string | null, currentName: string) => {
+    if (!folderId) return
+    const nextName = window.prompt('Edit folder name', currentName)?.trim()
+    if (!nextName || nextName === currentName) return
+    try {
+      const resp = await fetch(`/api/recording-folders/${folderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nextName }),
+      })
+      if (!resp.ok) {
+        console.error('rename folder error', await resp.text())
+      }
+    } catch (e) {
+      console.error('rename folder exception', e)
+    }
   }
 
   return (
@@ -417,8 +474,22 @@ function FolderGroupedRecordings({
           open={group.orderIndex === items[0].orderIndex}
         >
           <summary className="cursor-pointer px-3 py-2 flex items-center justify-between text-xs">
-            <div>
-              <span className="font-semibold mr-2">{group.name}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold mr-1">{group.name}</span>
+              {group.folderId && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handleRenameFolder(group.folderId, group.name)
+                  }}
+                  className="text-[11px] text-slate-500 hover:text-emerald-700"
+                  aria-label="Edit folder name"
+                >
+                  ✏️
+                </button>
+              )}
             </div>
             <div className="text-slate-500 flex items-center gap-3">
               <span>{group.recs.length} recording{group.recs.length !== 1 ? 's' : ''}</span>

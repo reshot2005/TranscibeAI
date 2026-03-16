@@ -1,47 +1,15 @@
-# ============================================
-# VoiceVault AI - Environment Configuration
-# Copy this file to `.env.local` for Next.js
-# and configure the same keys in Supabase
-# project settings for Edge Functions.
-# ============================================
+ALTER TABLE recordings 
+ADD COLUMN IF NOT EXISTS storage_type text,
+ADD COLUMN IF NOT EXISTS storage_bytes bigint;
+```
 
-# ---------- Core Supabase ----------
-NEXT_PUBLIC_SUPABASE_URL=https://dujuqvwpvepleoqvtafj.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1anVxdndwdmVwbGVvcXZ0YWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNzcwOTQsImV4cCI6MjA4ODk1MzA5NH0.2ygWIBiHiNTYoZdsgca_-5Qp-YrNRihINahEa_22ea4
+---
 
-# Used by Edge Functions (service role must NOT be exposed to client)
-SUPABASE_URL=https://dujuqvwpvepleoqvtafj.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR1anVxdndwdmVwbGVvcXZ0YWZqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzM3NzA5NCwiZXhwIjoyMDg4OTUzMDk0fQ.TQP7iXM9xEzwK1zeg5h3vZwQjd9xeC6L8_I2O-UF1dc
+**Step 2 — Add Cloudinary env vars in Vercel**
 
-# If you connect directly from backend tools / worker
-DATABASE_URL=postgresql://postgres:reshotgamer123@db.dujuqvwpvepleoqvtafj.supabase.co:5432/postgres
-
-# ---------- Third-party AI Providers ----------
-
-# AssemblyAI (primary transcription engine)
-ASSEMBLYAI_API_KEY=your-assemblyai-api-key
-
-# Groq (Whisper large-v3 secondary engine)
-GROQ_API_KEY=your-groq-api-key
-
-# Google Gemini (summaries + embeddings)
-GEMINI_API_KEY=your-gemini-api-key
-# Google Cloud (optional tertiary STT: chirp)
-GOOGLE_APPLICATION_CREDENTIALS_JSON=your-google-credentials-json-or-path
-
-# ---------- Caching / Queues / Rate limits ----------
-
-# Redis / Upstash for job status, rate limiting, etc. (optional)
-REDIS_URL=rediss://your-redis-url
-REDIS_TOKEN=your-redis-token
-
-# pg_cron / pgmq config is done inside Postgres; no env needed here.
-
-# ---------- Frontend App Config ----------
-
-NEXT_PUBLIC_APP_ENV=development
-NEXT_PUBLIC_APP_NAME=VoiceVault AI
-
-# WebSocket URL for live transcription viewer (if using a custom relay server)
-NEXT_PUBLIC_LIVE_TRANSCRIBE_WS_URL=wss://your-live-relay.example.com
-
+Go to Vercel → Your Project → Settings → Environment Variables → add:
+```
+CLOUDINARY_CLOUD_NAME = dw15kdopv
+CLOUDINARY_API_KEY = (from Cloudinary API Keys page)
+CLOUDINARY_API_SECRET = (from Cloudinary API Keys page)
+CLOUDINARY_UPLOAD_PRESET = Transcribe AI voicevault

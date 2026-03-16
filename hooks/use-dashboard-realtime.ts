@@ -23,10 +23,17 @@ type DashboardDepartment = {
   recording_count: number
 }
 
+type StorageUsage = {
+  usedBytes: number
+  softLimitBytes: number
+  hardLimitBytes: number
+}
+
 export function useDashboardRealtime() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recentRecordings, setRecentRecordings] = useState<DashboardRecording[]>([])
   const [departments, setDepartments] = useState<DashboardDepartment[]>([])
+  const [storageUsage, setStorageUsage] = useState<StorageUsage | null>(null)
 
   useEffect(() => {
     const supabase = getSupabaseBrowser()
@@ -89,6 +96,17 @@ export function useDashboardRealtime() {
           recording_count: d.recordings?.length ?? 0,
         })),
       )
+
+      // Storage usage
+      try {
+        const resp = await fetch('/api/storage/usage')
+        if (resp.ok) {
+          const json = (await resp.json()) as StorageUsage
+          setStorageUsage(json)
+        }
+      } catch (e) {
+        console.error('failed to load storage usage', e)
+      }
     }
 
     load()
@@ -117,6 +135,6 @@ export function useDashboardRealtime() {
     }
   }, [])
 
-  return { stats, recentRecordings, departments }
+  return { stats, recentRecordings, departments, storageUsage }
 }
 

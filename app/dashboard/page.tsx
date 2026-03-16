@@ -10,7 +10,7 @@ import { LiveTranscript } from '@/components/live-transcript'
 import { useDashboardRealtime } from '@/hooks/use-dashboard-realtime'
 
 export default function DashboardPage() {
-  const { stats, recentRecordings } = useDashboardRealtime()
+  const { stats, recentRecordings, storageUsage } = useDashboardRealtime()
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -99,6 +99,43 @@ export default function DashboardPage() {
               </motion.div>
             ))}
           </motion.div>
+
+          {/* Supabase Storage Usage */}
+          <div className="mb-10">
+            <h3 className="text-sm font-semibold mb-2" style={{ color: CYPRUS[900] }}>
+              Supabase Storage
+            </h3>
+            <div className="rounded-lg border px-4 py-3 bg-white" style={{ borderColor: `${CYPRUS[400]}20` }}>
+              {storageUsage ? (
+                <>
+                  <div className="flex items-center justify-between mb-2 text-xs">
+                    <span style={{ color: CYPRUS[700] }}>
+                      {formatMegabytes(storageUsage.usedBytes)} / {formatMegabytes(storageUsage.hardLimitBytes)} used
+                    </span>
+                    <span style={{ color: CYPRUS[500] }}>
+                      Soft limit at {formatMegabytes(storageUsage.softLimitBytes)}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-2 rounded-full"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (storageUsage.usedBytes / storageUsage.hardLimitBytes) * 100 || 0,
+                        )}%`,
+                        backgroundColor: CYPRUS[500],
+                      }}
+                    />
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs" style={{ color: CYPRUS[500] }}>
+                  Loading storage usage…
+                </p>
+              )}
+            </div>
+          </div>
 
           {/* Recent Recordings */}
           <motion.div
@@ -219,4 +256,11 @@ export default function DashboardPage() {
     </div>
   )
 }
+
+function formatMegabytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 MB'
+  const mb = bytes / (1024 * 1024)
+  return `${mb.toFixed(1)} MB`
+}
+
 
