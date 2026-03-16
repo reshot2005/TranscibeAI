@@ -39,26 +39,31 @@ export function useDashboardRealtime() {
     const supabase = getSupabaseBrowser()
 
     const load = async () => {
-      // Stats
+      // Stats – use all recordings for count, and any with duration/accuracy set
       const { data: allRecordings } = await supabase
         .from('recordings')
         .select('id, duration_seconds, estimated_accuracy')
 
       const { data: members } = await supabase.from('team_members').select('id')
 
-      const totalRecordings = allRecordings?.length ?? 0
+      const all = (allRecordings ?? []) as any[]
+
+      const totalRecordings = all.length
       const hoursProcessed =
-        (allRecordings ?? []).reduce(
+        all.reduce(
           (sum, r: any) => sum + (r.duration_seconds ?? 0),
           0,
         ) / 3600
 
+      const withAccuracy = all.filter(
+        (r: any) => typeof r.estimated_accuracy === 'number',
+      )
       const accuracyRate =
-        totalRecordings > 0
-          ? (allRecordings ?? []).reduce(
+        withAccuracy.length > 0
+          ? withAccuracy.reduce(
               (sum, r: any) => sum + (r.estimated_accuracy ?? 0),
               0,
-            ) / totalRecordings
+            ) / withAccuracy.length
           : 0
 
       setStats({

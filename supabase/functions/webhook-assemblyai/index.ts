@@ -109,6 +109,11 @@ serve(async (req) => {
       whisperTranscript,
     );
 
+    const durationSeconds =
+      arbitration.tokens.length > 0
+        ? arbitration.tokens[arbitration.tokens.length - 1].end / 1000
+        : null;
+
     // 3) Persist merged transcript as segments
     const segments = arbitration.tokens.map((t, idx) => ({
       recording_id: recordingId,
@@ -130,6 +135,7 @@ serve(async (req) => {
         transcription_status: "completed",
         status: "processed",
         estimated_accuracy: arbitration.estimatedAccuracy,
+        duration_seconds: durationSeconds,
       })
       .eq("id", recordingId);
 
