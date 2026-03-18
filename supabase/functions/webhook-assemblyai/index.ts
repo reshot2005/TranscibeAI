@@ -6,6 +6,7 @@ import { arbitrateTranscripts } from "../transcribe/arbitrate.ts";
 type Env = {
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  ASSEMBLYAI_WEBHOOK_SECRET: string;
 };
 
 // Allow unauthenticated webhook calls (AssemblyAI can't send Supabase JWTs).
@@ -33,11 +34,27 @@ serve(async (req) => {
   const env: Env = {
     SUPABASE_URL: Deno.env.get("SUPABASE_URL") ?? "",
     SUPABASE_SERVICE_ROLE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    ASSEMBLYAI_WEBHOOK_SECRET: Deno.env.get("ASSEMBLYAI_WEBHOOK_SECRET") ?? "",
   };
 
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     console.error("Supabase env vars missing");
     return new Response("Server misconfigured", { status: 500 });
+  }
+
+  if (!env.ASSEMBLYAI_WEBHOOK_SECRET) {
+    console.error("ASSEMBLYAI_WEBHOOK_SECRET missing");
+    return new Response("Server misconfigured", { status: 500 });
+  }
+
+  const authHeader =
+    req.headers.get("authorization") ?? req.headers.get("x-webhook-secret");
+  if (authHeader !== `Bearer ${env.ASSEMBLYAI_WEBHOOK_SECRET}`) {
+    console.error("webhook auth failed", {
+      route: "webhook-assemblyai",
+      time: new Date().toISOString(),
+    });
+    return new Response("Unauthorized", { status: 401 });
   }
 
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -48,6 +65,7 @@ serve(async (req) => {
   try {
     payload = await req.json();
   } catch {
+    console.error("Invalid JSON in webhook");
     return new Response("Invalid JSON", { status: 400 });
   }
 

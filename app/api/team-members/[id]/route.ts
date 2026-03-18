@@ -1,4 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+
+  const supabaseUrl = process.env.SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !serviceKey) {
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
+  }
+
+  try {
+    // 1. Fetch recordings to delete storage files
+    const recResp = await fetch(`${supabaseUrl}/rest/v1/recordings?team_member_id=eq.${encodeURIComponent(id)}&select=original_storage_path,storage_type`, {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`
+      }
+    })
+    
+    if (recResp.ok) {
+      const recordings = await recResp.json()
+      const supabasePaths = recordings
+        .filter((r: any) => r.storage_type === 'supabase' && r.original_storage_path)
+        .map((r: any) => r.original_storage_path)
+
+      if (supabasePaths.length > 0) {
+        const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false }})
+        await supabase.storage.from('recordings-original').remove(supabasePaths)
+      }
+    }
+  } catch (e) {
+    console.error('Failed to cleanup storage', e)
+  }
+
+  // 2. Delete the member
+  const resp = await fetch(
+    `${supabaseUrl}/rest/v1/team_members?id=eq.${encodeURIComponent(id)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+      },
+    },
+  )
+
+  if (!resp.ok) {
+    return NextResponse.json({ error: 'Delete member failed' }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true }, { status: 200 })
+}
+
 
 export async function PATCH(
   req: NextRequest,

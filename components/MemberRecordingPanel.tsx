@@ -15,6 +15,7 @@ type RecordingRow = {
   title: string | null
   status: string | null
   original_storage_path: string
+  audio_url?: string | null
   created_at?: string
   duration_seconds?: number | null
   folder_id?: string | null
@@ -48,7 +49,7 @@ export function MemberRecordingPanel({ departmentId, memberId, memberName }: Pro
     const load = async () => {
       const { data } = await supabase
         .from('recordings')
-        .select('id, title, status, original_storage_path, created_at, duration_seconds, folder_id')
+        .select('id, title, status, original_storage_path, audio_url, created_at, duration_seconds, folder_id')
         .eq('department_id', departmentId)
         .eq('team_member_id', memberId)
         .order('created_at', { ascending: false })
@@ -500,7 +501,7 @@ function FolderGroupedRecordings({
           <div className="px-3 pb-3 pt-1 space-y-2">
             {group.recs.map((r) => {
               const audioUrl =
-                `${supabaseUrl}/storage/v1/object/public/recordings-original/${r.original_storage_path}`
+                r.audio_url || `${supabaseUrl}/storage/v1/object/public/recordings-original/${r.original_storage_path}`
               return (
                 <div
                   key={r.id}

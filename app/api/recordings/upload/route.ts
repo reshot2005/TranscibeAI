@@ -1,8 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { v2 as cloudinary } from 'cloudinary'
+import { z } from 'zod'
 
 export const runtime = 'nodejs'
+
+// Simple in-memory rate limiting (per process)
+const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 30
+const rateLimitMap = new Map<string, { count: number; windowStart: number }>()
+
+function rateLimit(key: string): boolean {
+  const now = Date.now()
+  const entry = rateLimitMap.get(key)
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(key, { count: 1, windowStart: now })
+    return true
+  }
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false
+  }
+  entry.count += 1
+  return true
+}
+
+const UploadBodySchema = z.object({
+  recordingId: z.string().min(1),
+  departmentId: z.string().min(1),
+  memberId: z.string().min(1),
+  folderId: z.string().min(1),
+  title: z.string().min(1).max(255).optional(),
+  storagePath: z.string().min(1).max(1024),
+  publicAudioUrl: z.string().url(),
+})
 
 const SOFT_LIMIT_BYTES = 900 * 1024 * 1024
 const HARD_LIMIT_BYTES = 1024 * 1024 * 1024
@@ -20,33 +50,38 @@ if (cloudName && cloudApiKey && cloudApiSecret) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as
-    | {
-        recordingId?: string
-        departmentId?: string
-        memberId?: string
-        folderId?: string | null
-        title?: string
-        storagePath?: string
-        publicAudioUrl?: string
-      }
-    | null
-
-  if (!body) {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+  const ip =
+    req.headers.get('x-forwarded-for') ??
+    req.headers.get('x-real-ip') ??
+    'unknown'
+  if (!rateLimit(ip)) {
+    console.error('rate limit exceeded', {
+      route: '/api/recordings/upload',
+      ip,
+      time: new Date().toISOString(),
+    })
+    return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
   }
 
-  const { recordingId, departmentId, memberId, folderId, title, storagePath, publicAudioUrl } = body
-
-  if (!recordingId || !departmentId || !memberId || !folderId || !storagePath || !publicAudioUrl) {
-    return NextResponse.json(
-      {
-        error:
-          'recordingId, departmentId, memberId, folderId, storagePath, and publicAudioUrl are required',
-      },
-      { status: 400 },
-    )
+  const json = await req.json().catch(() => null)
+  const parsed = UploadBodySchema.safeParse(json)
+  if (!parsed.success) {
+    console.error('upload body validation failed', {
+      route: '/api/recordings/upload',
+      issues: parsed.error.issues,
+    })
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
+
+  const {
+    recordingId,
+    departmentId,
+    memberId,
+    folderId,
+    title,
+    storagePath,
+    publicAudioUrl,
+  } = parsed.data
 
   const finalTitle = title || 'Untitled recording'
 
@@ -108,6 +143,23 @@ export async function POST(req: NextRequest) {
     let storageType: 'supabase' | 'cloudinary' = 'supabase'
     let storageBytes = fileSizeBytes
     let finalAudioUrl = publicAudioUrl
+
+    // Prevent SSRF by ensuring the audio URL is from our Supabase project
+    try {
+      const supabaseHost = new URL(supabaseUrl).host
+      const audioHost = new URL(publicAudioUrl).host
+      if (audioHost !== supabaseHost) {
+        console.error('untrusted audio url host', {
+          route: '/api/recordings/upload',
+          supabaseHost,
+          audioHost,
+        })
+        return NextResponse.json({ error: 'Invalid audio URL' }, { status: 400 })
+      }
+    } catch (e) {
+      console.error('failed to validate audio url', e)
+      return NextResponse.json({ error: 'Invalid audio URL' }, { status: 400 })
+    }
 
     // 3) If we're above the soft limit and Cloudinary is configured, overflow to Cloudinary.
     if (!willFitInSupabase) {

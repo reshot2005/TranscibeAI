@@ -75,6 +75,26 @@ export default function DepartmentPage() {
     })
   }
 
+  const deleteMember = async (member: TeamMember) => {
+    if (!window.confirm(`Are you sure you want to delete ${member.name}? All their audio recordings will be deleted as well.`)) return
+    
+    if (selectedMember?.id === member.id) {
+      setSelectedMember(null)
+    }
+
+    try {
+      const resp = await fetch(`/api/team-members/${member.id}`, {
+        method: 'DELETE',
+      })
+      if (!resp.ok) {
+        throw new Error('Failed to delete member')
+      }
+    } catch (e: any) {
+      console.error(e)
+      alert(e.message)
+    }
+  }
+
   return (
     <div className="flex min-h-screen">
       <main className="flex-1 p-8 space-y-6">
@@ -132,14 +152,24 @@ export default function DepartmentPage() {
                       <div className="font-medium">{m.name}</div>
                       <div className="text-xs text-slate-500">{m.role}</div>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => editMemberName(m)}
-                      className="ml-2 text-xs text-slate-500 hover:text-emerald-700"
-                      aria-label="Edit member name"
-                    >
-                      ✏️
-                    </button>
+                    <div className="flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => editMemberName(m)}
+                        className="ml-2 text-xs text-slate-500 hover:text-emerald-700"
+                        aria-label="Edit member name"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteMember(m)}
+                        className="ml-2 text-xs text-red-500 hover:text-red-700"
+                        aria-label="Delete member"
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {members.length === 0 && (
