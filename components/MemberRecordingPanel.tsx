@@ -336,7 +336,7 @@ export function MemberRecordingPanel({ departmentId, memberId, memberName }: Pro
           <div className="flex items-center gap-3 mb-3 text-xs">
             <input
               type="text"
-              placeholder="Search folders…"
+              placeholder="Search folders, titles, or file names…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="flex-1 border rounded px-2 py-1"
@@ -409,8 +409,11 @@ function FolderGroupedRecordings({
   const searchLower = search.trim().toLowerCase()
 
   let items = Array.from(groups.values()).map((g, idx) => {
-    // When searching, filter recordings inside each folder as well
-    const recsForGroup = !searchLower
+    const inFolderName = g.name.toLowerCase().includes(searchLower)
+    
+    // When searching, if folder name matches, keep all recordings.
+    // Otherwise, filter recordings inside each folder by title/path.
+    const recsForGroup = !searchLower || inFolderName
       ? g.recs
       : g.recs.filter((r) => {
           const title = (r.title || 'untitled recording').toLowerCase()
@@ -429,14 +432,13 @@ function FolderGroupedRecordings({
       name: g.name,
       recs: recsForGroup,
       totalSeconds,
+      inFolderName,
     }
   })
 
   if (searchLower) {
     items = items.filter((g) => {
-      const inFolderName = g.name.toLowerCase().includes(searchLower)
-      const hasMatchingRecordings = g.recs.length > 0
-      return inFolderName || hasMatchingRecordings
+      return g.inFolderName || g.recs.length > 0
     })
   }
 
